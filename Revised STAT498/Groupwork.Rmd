@@ -210,7 +210,7 @@ par(mfrow = c(3, 3))
 for (i in 2:ncol(TotalContinents)) {
   title <- paste("WF Production vs Pop. in", colnames(TotalContinents)[i])
     text <- paste0("R^2: ", round(cor(TotalContinents[,i], TotalPopulation[,i - 1]), 2))
-  plot(TotalContinents[, i], TotalPopulation[, i - 1], ylab = "Population (1000 persons)", xlab = "Production (M3)", main = c(title, text), type = "p", col = "blue", lwd = 1.5)
+  plot(y = TotalContinents[, i], x = TotalPopulation[, i - 1], xlab = "Population (1000 persons)", ylab = "Production (M3)", main = c(title, text), type = "p", col = "blue", lwd = 1.5)
 
   if (colnames(TotalContinents)[i] %in% c("CentralAmerica", "Europe", "Africa", "NorthAmerica", "Carribean")) {
     box(col = "red", lwd = 2)
@@ -257,6 +257,63 @@ colnames(Pvalues) <- "P-Values"
 knitr::kable(Pvalues)
 plot.new()
 ```
+
+# Effect size
+```{r}
+EffectValues <- c()
+for (i in 1:ncol(TotalPopulation)) {
+  # Using the mean as the criteria for splitting the data
+  meanPopulation <- mean(TotalPopulation[, i])
+  BelowMean <- which(TotalPopulation[, i] <= meanPopulation)
+  AboveMean <- which(TotalPopulation[, i] > meanPopulation)
+  dataBelow <- TotalContinents[BelowMean, i + 1]
+  dataAbove <- TotalContinents[AboveMean, i + 1]
+  SDpooled <- ((length(dataAbove)-1) * sd(dataAbove)^2 + (length(dataBelow)-1) * sd(dataBelow)^2) / (length(dataAbove) + length(dataBelow) - 2)
+  SqrtSD <- sqrt(SDpooled)
+  Effect <- (mean(dataAbove) - mean(dataBelow)) / SqrtSD
+  EffectValues <- rbind(EffectValues, Effect)
+}
+EffectValues <- as.data.frame(EffectValues)
+rownames(EffectValues) <- colnames(TotalPopulation)
+colnames(EffectValues) <- "Effect Size"
+knitr::kable(EffectValues)
+
+
+BSvalues <- NULL
+EffectValues <- c()
+for (i in 1:ncol(TotalPopulation)) {
+  # Using the mean as the criteria for splitting the data
+  meanPopulation <- mean(TotalPopulation[, i])
+  BelowMean <- which(TotalPopulation[, i] <= meanPopulation)
+  AboveMean <- which(TotalPopulation[, i] > meanPopulation)
+  dataBelow <- TotalContinents[BelowMean, i + 1]
+  dataAbove <- TotalContinents[AboveMean, i + 1]
+  for (j in 1:10000) {
+    dataBBS <- sample(dataBelow, size = length(dataBelow), replace = T)
+    dataABS <- sample(dataAbove, size = length(dataBelow), replace = T)
+    SDpooled <- ((length(dataABS)-1) * sd(dataABS)^2 + (length(dataBBS)-1) * sd(dataBBS)^2) / (length(dataABS) + length(dataBBS) - 2)
+    SqrtSD <- sqrt(SDpooled)
+    Effect <- (mean(dataABS) - mean(dataBBS)) / SqrtSD
+    EffectValues <- rbind(EffectValues, Effect)
+  }
+  BSvalues <- cbind(BSvalues, EffectValues)
+  EffectValues <- c()
+}
+
+BSvalues <- as.data.frame(BSvalues)
+colnames(BSvalues) <- colnames(TotalPopulation)
+
+BSCI <- NULL
+for (z in 1:ncol(BSvalues)) {
+  dm <- quantile(BSvalues[, z], probs = c(0.025, 0.975))
+  BSCI <- rbind(BSCI, dm)
+}
+rownames(BSCI) <- colnames(TotalPopulation)
+colnames(BSCI) <- c("Lower", "Upper")
+knitr::kable(BSCI)
+
+```
+
 
 # Looking at the africa closely
 ## The boostrapped mean using countries in africa production from [2000 ~ 2017]
@@ -430,12 +487,66 @@ for (i in 1:length(OverProduced)) {
   DifferencePvalues <- rbind(DifferencePvalues,sum(nullDiffs >= obsDiff) / length(nullDiffs))
   ############################################
   popRegion <- subset(Population, subset = Population$Area == OverProduced[i] & Population$Year >= 2000 & Population$Year <= 2017 & Population$Element == "Total Population - Both sexes")
-  plot(y = popRegion$Value, x = agg.dt$x, main = paste("Pop. vs. production in", OverProduced[i]), xlab = "Production (M3)", ylab = "in 1000 persons")
+  plot(x = popRegion$Value, y = agg.dt$x, main = c("Population. vs. production", OverProduced[i]), ylab = "Production (M3)", xlab = "in 1000 persons")
 }
 rownames(DifferencePvalues) <- OverProduced
 colnames(DifferencePvalues) <- "P-value"
 knitr::kable(DifferencePvalues)
 par(mfrow = c(1, 1))
+```
+
+# Effect size of overproducing countries
+```{r}
+# Let's look at the overproduced and population
+par(mfrow = c(3, 3))
+EffectValues <- c()
+OverProduceAfrica <- Africa2[which(Africa2$Area %in% OverProduced), ]
+for (i in 1:length(OverProduced)) {
+  dt <- subset(OverProduceAfrica, subset = OverProduceAfrica$Area == OverProduced[i])
+  agg.dt <- aggregate(dt$Value, by = list(dt$Year), FUN = sum, na.rm = T)
+  
+  ########################################################
+  nullDiffs <- numeric(10000)
+  dataBelow <- subset(agg.dt, subset = agg.dt$Group.1 <= 2008)[, 2]
+  dataAbove <- subset(agg.dt, subset = agg.dt$Group.1 > 2008)[, 2]
+  SDpooled <- ((length(dataAbove)-1) * sd(dataAbove)^2 + (length(dataBelow)-1) * sd(dataBelow)^2) / (length(dataAbove) + length(dataBelow) - 2)
+  SqrtSD <- sqrt(SDpooled)
+  Effect <- (mean(dataAbove) - mean(dataBelow)) / SqrtSD
+  EffectValues <- rbind(EffectValues, Effect)
+}
+EffectValues <- as.data.frame(EffectValues)
+rownames(EffectValues) <- OverProduced
+colnames(EffectValues) <- "Effect Size"
+knitr::kable(EffectValues)
+
+
+BSvalues <- NULL
+EffectValues <- c()
+OverProduceAfrica <- Africa2[which(Africa2$Area %in% OverProduced), ]
+for (i in 1:length(OverProduced)) {
+  dt <- subset(OverProduceAfrica, subset = OverProduceAfrica$Area == OverProduced[i])
+  agg.dt <- aggregate(dt$Value, by = list(dt$Year), FUN = sum, na.rm = T)
+  
+  ########################################################
+  nullDiffs <- numeric(10000)
+  dataBelow <- subset(agg.dt, subset = agg.dt$Group.1 <= 2008)[, 2]
+  dataAbove <- subset(agg.dt, subset = agg.dt$Group.1 > 2008)[, 2]
+  for (j in 1:10000) {
+    dataBBS <- sample(dataBelow, size = length(dataBelow), replace = T)
+    dataABS <- sample(dataAbove, size = length(dataBelow), replace = T)
+    SDpooled <- ((length(dataABS)-1) * sd(dataABS)^2 + (length(dataBBS)-1) * sd(dataBBS)^2) / (length(dataABS) + length(dataBBS) - 2)
+    SqrtSD <- sqrt(SDpooled)
+    Effect <- (mean(dataABS) - mean(dataBBS)) / SqrtSD
+    EffectValues <- rbind(EffectValues, Effect)
+  }
+  BSvalues <- rbind(BSvalues, quantile(EffectValues, probs = c(0.025, 0.975), na.rm = T))
+  EffectValues <- c()
+}
+
+BSvalues <- as.data.frame(BSvalues)
+rownames(BSvalues) <- OverProduced
+colnames(BSvalues) <- c("Lower", "Upper")
+knitr::kable(BSvalues)
 ```
 
 # The export and import value in overproducing countries
